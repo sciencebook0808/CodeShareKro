@@ -214,23 +214,6 @@
             margin-bottom: 15px;
         }
 
-        .language-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 8px 20px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            font-weight: 600;
-            margin-bottom: 20px;
-        }
-
-        .language-icon {
-            font-size: 1.2em;
-        }
-
         .back-btn {
             padding: 10px 25px;
             background: #667eea;
@@ -350,11 +333,10 @@
                 <button class="back-btn" onclick="showSection('home')">← Back to Home</button>
                 <div class="view-header">
                     <h2 id="viewTitle"></h2>
-                    <div id="languageBadge" class="language-badge"></div>
                 </div>
                 <div class="code-display">
                     <button class="copy-btn" onclick="copyCode()">Copy</button>
-                    <pre><code id="viewCode"></code></pre>
+                    <pre><code id="viewCode" class="language-cpp"></code></pre>
                 </div>
             </div>
         </div>
@@ -364,9 +346,169 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     
-    <!-- Prism.js Core -->
+    <!-- Prism.js for syntax highlighting -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+
+    <script>
+        // Firebase Configuration
+        // REPLACE WITH YOUR FIREBASE CONFIG
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        let currentCode = '';
+
+        // Show section
+        function showSection(sectionName) {
+            const sections = document.querySelectorAll('.section');
+            const buttons = document.querySelectorAll('.nav-btn');
+            
+            sections.forEach(section => section.classList.remove('active'));
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            document.getElementById(sectionName).classList.add('active');
+            event.target.classList.add('active');
+
+            if (sectionName === 'home') {
+                loadCodes();
+            }
+        }
+
+        // Load all codes
+        async function loadCodes() {
+            const container = document.getElementById('cardsContainer');
+            container.innerHTML = '<div class="loading">Loading codes...</div>';
+
+            try {
+                const snapshot = await db.collection('codes').orderBy('timestamp', 'desc').get();
+                
+                if (snapshot.empty) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No codes yet</h3>
+                            <p>Be the first to share a code snippet!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = '';
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const card = createCard(doc.id, data);
+                    container.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error loading codes:', error);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>Error loading codes</h3>
+                        <p>Please check your Firebase configuration</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Create card element
+        function createCard(id, data) {
+            const card = document.createElement('div');
+            card.className = 'code-card';
+            card.onclick = () => viewCode(id, data);
+
+            const cleanCode = extractCode(data.code);
+            const preview = cleanCode.split('\n').slice(0, 3).join('\n');
+
+            card.innerHTML = `
+                <h3>${data.title}</h3>
+                <div class="code-preview">${escapeHtml(preview)}</div>
+            `;
+
+            return card;
+        }
+
+        // Extract code from markdown format
+        function extractCode(text) {
+            const match = text.match(/```(?:cpp)?\n([\s\S]*?)```/);
+            return match ? match[1].trim() : text;
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Add new code
+        async function addCode(event) {
+            event.preventDefault();
+            
+            const title = document.getElementById('title').value;
+            const code = document.getElementById('code').value;
+
+            try {
+                await db.collection('codes').add({
+                    title: title,
+                    code: code,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                document.getElementById('title').value = '';
+                document.getElementById('code').value = '';
+                
+                alert('Code added successfully!');
+                showSection('home');
+            } catch (error) {
+                console.error('Error adding code:', error);
+                alert('Error adding code. Please check your Firebase configuration.');
+            }
+        }
+
+        // View code details
+        function viewCode(id, data) {
+            document.getElementById('viewTitle').textContent = data.title;
+            
+            const cleanCode = extractCode(data.code);
+            currentCode = cleanCode;
+            
+            const codeElement = document.getElementById('viewCode');
+            codeElement.textContent = cleanCode;
+            
+            Prism.highlightElement(codeElement);
+            
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.getElementById('view').classList.add('active');
+        }
+
+        // Copy code to clipboard
+        function copyCode() {
+            navigator.clipboard.writeText(currentCode).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                
+                setTimeout(() => {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+
+        // Load codes on page load
+        window.addEventListener('load', loadCodes);
+    </script>
+</body>
+    </html>ents/prism-clike.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
