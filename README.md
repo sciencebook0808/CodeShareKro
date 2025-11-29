@@ -1,35 +1,326 @@
-# CodeShareKro
+Goal: Write a complete, production-ready Arduino-style sketch for an ESP8266 (NodeMCU / ESP-12E) that implements an offline-capable RFID door access system with environmental sensors, an OLED status display, and full Blynk mobile integration (real-time values, control widgets, user management, email & push notifications, and a serial terminal mirrored to Blynk). The code must be robust (non-blocking, watchdog-safe), recover gracefully from peripheral errors (e.g., reset/re-init RC522 on failures), and persist user data locally in JSON so door unlocking works offline.
 
-Produce one Arduino/ESP8266-compatible sketch (single file) that runs an access-control & environment-monitoring system named Quantum Resort, integrates with Blynk (mobile app) for remote control/monitoring, supports offline operation (local JSON user DB), and drives an OLED display for local status.
+HARDWARE / PIN MAP (fixed — do not change):
+
+RC522 RFID (SPI):
+
+SDA / SS -> D8 (GPIO15)
+
+SCK       -> D5 (GPIO14)
+
+MOSI      -> D7 (GPIO13)
+
+MISO      -> D6 (GPIO12)
+
+RST       -> NOT CONNECTED (no hardware reset pin required)
+
+VCC -> 3.3V, GND -> GND
+
+
+OLED (I2C 128x32 or 128x64; 1.2" is fine):
+
+SDA -> D2 (GPIO4)
+
+SCL -> D1 (GPIO5)
+
+VCC -> 3.3V, GND -> GND
+
+
+MQ-135 Gas sensor:
+
+AO -> A0 (use proper scaling in code and note measured voltage -> AQI mapping)
+
+Heater / VCC -> 5V, GND -> GND
+
+
+Relay (active-LOW to unlock door):
+
+IN -> D4 (GPIO2) (active LOW; set HIGH at boot to keep locked)
+
+VCC -> 5V coil supply (common GND required)
+
+
+DHT22:
+
+DATA -> D0 (GPIO16)
+
+VCC -> 3.3V, GND -> GND
+
+
+
+HIGH-LEVEL FEATURE REQUIREMENTS
+
+1. Startup / OLED behavior
+
+On ESP boot, show single-screen message on the OLED:
+
+First line: Welcome to Quantum Resort for 2 seconds, then immediately update to the main real-time dashboard screen.
+
+
+Main OLED dashboard layout (single page, refresh every ~1s):
+
+Top-left: status text Quantum Resort followed inline by one symbol representing connectivity:
+
+X → WiFi NOT connected
+
+W → WiFi connected (Blynk disconnected)
+
+WB → WiFi + Blynk both connected
+
+
+Top-right (same top line after status symbol): show DHT22 temperature and humidity succinctly (e.g., 25.4°C 56%).
+
+Next to or below this on the top area: show MQ135 → convert sensor reading to an AQI numeric value and a text label. Display AQI: <value> and short category (Good / Moderate / Poor / Very Poor / Hazardous).
+
+Use EPA-like bands tuned for Indian context: 0–100 Good, 101–200 Moderate, 201–300 Poor, 301–500 Very Poor, >500 Hazardous. If AQI > 500 trigger immediate alerts.
+
+
+Bottom-right corner: door status LOCKED or UNLOCKED.
+
+When an RFID access event occurs, show a temporary overlay message that replaces the main data area for ~3–6 seconds:
+
+If card registered: display Welcome, <Name> and <Designation> with a greeting variant depending on time of day, and show Door OPENING while relay activates; then show Door CLOSED after auto-close.
+
+If card not registered: display CARD NOT REGISTERED — ACCESS DENIED.
+
+
+
+All OLED text must be readable; use clear fonts and avoid overflowing lines.
+
+
+
+2. RFID flow and door control
+
+Continuous scanning mode during normal operation (unless Learn Mode enabled).
+
+If a registered card is presented:
+
+Display user name & designation on OLED as above.
+
+Activate relay (digitalWrite D4 LOW) for a configurable duration (default 5 seconds), then de-activate (digitalWrite D4 HIGH).
+
+Log access locally (timestamp, user id, name, method = RFID) into an access history (circular buffer) and to Blynk.
+
+Update Blynk UI with last-accessed user details and time, and push a Blynk notification and email with the access summary.
+
+
+If card is not registered:
+
+Show ACCESS DENIED on OLED, log event (timestamp, card UID) and send a Blynk notification that an unregistered card was scanned (but avoid spamming notifications).
+
+
+Allow unlocking from Blynk mobile app via a secure button (press-and-hold or confirmation). When Blynk unlock is used, log method = BLYNK.
+
+
+
+3. User management (offline-first)
+
+Users are stored on-device in JSON format using a filesystem that survives reset (SPIFFS or LittleFS).
+
+Each user object must include: uid (RFID UID string), name, designation, permission (boolean unlock allowed), added_by (method: SERIAL or BLYNK), timestamp_added.
+
+UI for adding users:
+
+Blynk: Provide a dedicated Learn Mode toggle widget. In Learn Mode:
+
+When an RFID card is scanned, the Blynk interface receives the raw UID automatically in a datastream and opens inputs (Name, Designation, Permission toggle). The user fills them and then taps Save. The ESP accepts that payload and stores the user JSON locally.
+
+After saving, the device exits Learn Mode automatically and resumes normal scanning.
+
+When a new user is added via Blynk, the system should send an email with user details and the method of adding.
+
+
+Serial Monitor: The serial terminal (USB) must accept commands to add users. Provide a simple interactive command or one-line command format to add a user (UID, name, designation, permission). When a user is added over serial, the same email notification is sent (if online) and an appropriate Blynk update occurs. The Blynk terminal must mirror serial messages (two-way).
+
+
+Provide the ability to remove a user from both Blynk UI (list widget or table) and Serial. Removing should update local JSON and push to Blynk.
+
+
+
+4. Blynk integration and datastreams (required names & widgets)
+
+Provide clear mapping of Blynk datastream names and recommended widget types (agent decides exact pin-to-virtual pin mapping). At minimum include:
+
+V_TEMP – value display (temperature)
+
+V_HUM – value display (humidity)
+
+V_AQI – value display (AQI numeric) + text label for band
+
+V_DOOR – LED or labeled status (LOCKED/UNLOCKED)
+
+V_LAST_USER – Label / Value showing last-access name & time
+
+V_LEARN_MODE – Toggle widget to enable/disable learn mode
+
+V_ADD_USER_UID – Read-only field auto-filled when learn mode captures UID
+
+V_ADD_USER_NAME, V_ADD_USER_DESG, V_ADD_USER_ALLOW – Input widgets for saving new user
+
+V_UNLOCK_REQ – Button (with confirmation) to unlock door remotely
+
+V_SERIAL – Terminal widget that mirrors USB Serial and accepts typed commands
+
+V_USERS_LIST – List or Table widget showing registered users (UID + name + permission) with remove option
+
+V_ALERTS – Push notifications and email triggers (when AQI > 500, when user added, when unregistered card used)
+
+
+Provide concrete examples of the Blynk JSON payload structure for adding a user (what the ESP expects on virtual pins).
+
+Blynk must be able to operate in offline mode gracefully — local operations (unlock by registered card) must not require cloud connectivity.
+
+
+
+5. Serial monitor & Blynk terminal sync
+
+Mirror all Serial.println output to the Blynk Terminal widget and vice versa. Commands typed into the Blynk Terminal stream should be fed to the same command parser as USB serial.
+
+Support these serial commands (examples):
+
+ADDUID <UID> <Name> <Desig> <1|0> → adds user with permission flag
+
+DELUID <UID> → delete user
+
+LIST → prints all users and their allowed permission
+
+LEARN ON / LEARN OFF
+
+UNLOCK → triggers the relay open for configured duration
+
+
+Ensure command parsing is robust and returns clear success / error messages both on USB serial and Blynk terminal.
+
+
+
+6. Email & Notifications
+
+On user added (both SERIAL and BLYNK), send an email containing: UID, Name, Designation, method-of-adding, timestamp.
+
+On AQI crossing > 500 (Hazardous), send immediate email and push notification to Blynk subscribers; also show persistent alert on OLED until acknowledged.
+
+When a registered user unlocks via RFID or Blynk, send a Blynk push notification with user and time summary and update V_LAST_USER.
+
+If the agent prefers SMTP vs. Blynk email widget, they may implement both; use secure storage for any required credentials.
+
+
+
+7. AQI conversion and thresholds
+
+Provide a simple conversion from MQ-135 analog outputs to an approximate AQI numeric scale; document in code comments the mapping and any calibration config variables.
+
+Use the categorical thresholds listed above (0–100 Good, 101–200 Moderate, 201–300 Poor, 301–500 Very Poor, >500 Hazardous).
+
+When AQI enters a new category, update OLED and Blynk state and optionally send a push/email on category Hazardous.
+
+
+
+8. User experience specifics
+
+When WiFi / Blynk connectivity changes, update the OLED symbol inline (X / W / WB) in real time.
+
+The OLED must always show the current sensor values (DHT + AQI) when idle.
+
+Last-access details appear in Blynk V_LAST_USER and a short history buffer (local + shown in Blynk list).
+
+When in Learn Mode, the OLED should display LEARN MODE: READY and show the captured UID after a card is scanned, until user completes save on Blynk or cancels.
+
+
+
+9. Persistence and syncing
+
+Store users and a configurable history buffer in JSON using the filesystem (LittleFS or SPIFFS). Provide functions to export/import this JSON to/from Blynk (so remote backups are possible).
+
+On connectivity gain (WiFi/Blynk reconnected), sync local logs and newly added users with the cloud (upload user additions if any and push missed events).
+
+
+
+10. Security & safety
+
+Require manual confirmation (Blynk push confirmation or a PIN typed on Blynk) to enable remote unlock (prevent accidental clicks). Provide a configuration option for this.
+
+Avoid storing plain-text wifi or SMTP passwords in code; instead treat them as config values and show how the sketch reads them from a config.h or a JSON file (agent may implement secure handling in code).
+
+Debounce card read events to avoid duplicate trigger when a card is presented for >1s.
+
+
+
+11. Operational parameters & configuration
+
+Provide easy-to-edit constants at top of sketch:
+
+Relay active duration (default 5 sec)
+
+Sensor sampling intervals (DHT every 2 s; MQ-135 every 5 s; OLED refresh every 1 s)
+
+Blynk heartbeat interval
+
+Max number of users stored locally
+
+Email recipients list
+
+
+All constants should be clearly labeled and documented in code comments.
+
+
+
+
+DELIVERABLES (what the agent must return)
+
+1. A fully working Arduino sketch (single file or well-structured multi-file) that implements the above. It must compile on standard Arduino/PlatformIO toolchains for ESP8266.
+
+
+2. A sample config.example (no secrets) that lists required Blynk tokens, WiFi placeholders, SMTP placeholders, and other configuration entries.
+
+
+3. A text file describing the complete Blynk project:
+
+Virtual pin mapping,
+
+Recommended widgets and their configuration (e.g., Terminal on V_SERIAL, Button on V_UNLOCK_REQ with mode = push, list widget settings),
+
+Exact datastream names and JSON payload examples for ADD USER and SYNC.
+
+
+
+4. The JSON schema for local user storage and an example JSON file with two sample users.
+
+
+5. A short user manual (max 1 page) describing:
+
+How to enable Learn Mode via Blynk and Serial, and how the workflow looks to add a user
+
+How to unlock from Blynk (safeguards)
+
+How to interpret AQI categories & OLED symbols
+
+
+
+6. Minimal but robust logging on Serial and Blynk Terminal (give sample outputs).
+
+
+7. A note listing any third-party libraries used (names + suggested versions).
+
+
+
+Constraints & style
+
+The agent may choose libraries but the code must be non-blocking, call yield() or ESP.wdtFeed() appropriately and manage WiFi/Blynk reconnect without resetting the device.
+
+Keep the code readable, well-commented around core logic (user storage, learn mode, RFID handling, Blynk handlers).
+
+The agent must not include hardware build steps; assume the reader knows how to connect the specified peripherals to the pins listed.
+
 
 
 ---
 
-TARGET HARDWARE & PIN ASSIGNMENT (use exactly these pins)
+Output format request from agent
 
-Board: ESP8266 (NodeMCU / ESP-12E devboard)
+Provide the code files in a single archive or as inline sections (main sketch first), followed by the Blynk project description, sample JSON, and the one-page manual.
 
-RC522 RFID: SPI on hardware SPI pins
+Also list test steps (short) the developer should run to verify (e.g., test RFID read -> expected OLED message; test adding user via Blynk -> expected email and JSON update). Keep test steps concise.
 
-SCK → D5 (GPIO14)
-
-MOSI → D7 (GPIO13)
-
-MISO → D6 (GPIO12)
-
-SDA/SS → D8 (GPIO15)
-
-RST → NOT CONNECTED (module will work without it)
-
-
-OLED I²C (1.2")
-
-SDA → D2 (GPIO4)
-
-SCL → D1 (GPIO5)
-
-
-MQ-135 gas sensor: A0 (raw analog reading must be converted to AQI-like value in sketch)
 
 DHT22: D0 (GPIO16) for DATA
 
