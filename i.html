@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Bot Controller</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; display: flex; justify-content: center; padding: 20px; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        h2 { color: #0088cc; margin-top: 0; }
+        label { display: block; margin: 10px 0 5px; font-weight: bold; font-size: 14px; }
+        input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; margin-bottom: 10px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; margin-bottom: 10px; }
+        .btn-text { background-color: #0088cc; color: white; }
+        .btn-img { background-color: #28a745; color: white; }
+        button:hover { opacity: 0.8; }
+        #status { font-size: 13px; color: #666; text-align: center; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Bot Controller</h2>
+    
+    <label>Number (for Table)</label>
+    <input type="number" id="numTable" value="9">
+    
+    <label>Message Content</label>
+    <textarea id="msgContent" rows="4">Enter your custom text here...</textarea>
+    
+    <label>Image URL (Optional)</label>
+    <input type="text" id="imgUrl" placeholder="https://example.com/image.jpg">
+
+    <button class="btn-text" onclick="sendTable()">Send Table of N</button>
+    <button class="btn-text" onclick="sendCustomText()">Send Custom Text</button>
+    <button class="btn-img" onclick="sendPhoto()">Send Image URL</button>
+
+    <div id="status">Ready to send</div>
+</div>
+
+<script>
+    const TOKEN = "8539545999:AAGPUpBrVsZGwMPpBXx5tghaHoTJEH9hrbo";
+    const CHAT_ID = "7568961446";
+
+    async function apiCall(method, params) {
+        const url = `https://api.telegram.org/bot${TOKEN}/${method}`;
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            });
+            const data = await response.json();
+            document.getElementById('status').innerText = data.ok ? "✅ Success!" : "❌ Error: " + data.description;
+        } catch (err) {
+            document.getElementById('status').innerText = "❌ Network Error";
+        }
+    }
+
+    function sendTable() {
+        const n = document.getElementById('numTable').value;
+        let table = `Multiplication Table for ${n}:\n--------------------\n`;
+        for (let i = 1; i <= 10; i++) {
+            table += `${n} x ${i.toString().padStart(2, ' ')} = ${(n * i).toString().padStart(3, ' ')}\n`;
+        }
+        // Wrapping in pre tags for Telegram monospace
+        const message = "```\n" + table + "\n```";
+        apiCall('sendMessage', { chat_id: CHAT_ID, text: message, parse_mode: 'MarkdownV2' });
+    }
+
+    function sendCustomText() {
+        const text = document.getElementById('msgContent').value;
+        apiCall('sendMessage', { chat_id: CHAT_ID, text: text });
+    }
+
+    function sendPhoto() {
+        const url = document.getElementById('imgUrl').value;
+        if(!url) return alert("Please enter an image URL");
+        apiCall('sendPhoto', { chat_id: CHAT_ID, photo: url, caption: "Here is your image!" });
+    }
+</script>
+
+</body>
+</html>
