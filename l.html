@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Bot Dashboard</title>
+    <style>
+        :root { --tg-blue: #0088cc; --tg-green: #28a745; --bg: #f0f2f5; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: auto; }
+        
+        /* Dashboard Grid */
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 25px; }
+        .grid-item { 
+            background: white; padding: 20px; border-radius: 12px; text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); cursor: pointer; transition: 0.2s;
+        }
+        .grid-item:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); }
+        .grid-item i { font-size: 24px; display: block; margin-bottom: 8px; }
+
+        /* Sections */
+        .section { background: white; padding: 25px; border-radius: 15px; display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .section.active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        h2 { margin-top: 0; color: var(--tg-blue); border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        label { display: block; margin: 15px 0 5px; font-weight: 600; color: #444; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        
+        button { 
+            width: 100%; padding: 12px; margin-top: 20px; border: none; border-radius: 8px;
+            background: var(--tg-blue); color: white; font-weight: bold; cursor: pointer;
+        }
+        .back-btn { background: #666; margin-top: 10px; }
+        #status { text-align: center; margin-top: 15px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="mainGrid" class="grid">
+        <div class="grid-item" onclick="showSection('mathSection')">🔢 Math Pro</div>
+        <div class="grid-item" onclick="showSection('scienceSection')">🔬 Science Tool</div>
+        <div class="grid-item" onclick="showSection('fileSection')">📂 Send Files</div>
+        <div class="grid-item" onclick="showSection('photoSection')">🖼️ Send Photos</div>
+    </div>
+
+    <div id="mathSection" class="section">
+        <h2>Math Solver</h2>
+        <label>Select Operation</label>
+        <select id="mathOp">
+            <option value="table">Multiplication Table</option>
+            <option value="square">Square & Root</option>
+            <option value="fact">Factorial</option>
+        </select>
+        <label>Enter Number</label>
+        <input type="number" id="mathInput" value="5">
+        <button onclick="runMath()">Calculate & Send</button>
+        <button class="back-btn" onclick="showSection('mainGrid')">Back to Menu</button>
+    </div>
+
+    <div id="scienceSection" class="section">
+        <h2>Science Assistant</h2>
+        <label>Topic Reference</label>
+        <select id="sciTopic">
+            <option value="periodic">Chemical Elements Info</option>
+            <option value="physics">Physics Constants</option>
+        </select>
+        <button onclick="sendScience()">Send Data</button>
+        <button class="back-btn" onclick="showSection('mainGrid')">Back to Menu</button>
+    </div>
+
+    <div id="fileSection" class="section">
+        <h2>Upload Document</h2>
+        <input type="file" id="fileInput">
+        <button onclick="uploadToTelegram('sendDocument', 'fileInput', 'document')">Send File</button>
+        <button class="back-btn" onclick="showSection('mainGrid')">Back to Menu</button>
+    </div>
+
+    <div id="photoSection" class="section">
+        <h2>Upload Photo</h2>
+        <input type="file" id="photoInput" accept="image/*">
+        <button onclick="uploadToTelegram('sendPhoto', 'photoInput', 'photo')">Send Photo</button>
+        <button class="back-btn" onclick="showSection('mainGrid')">Back to Menu</button>
+    </div>
+
+    <div id="status">Select a feature to begin</div>
+</div>
+
+<script>
+    const TOKEN = "8539545999:AAGPUpBrVsZGwMPpBXx5tghaHoTJEH9hrbo";
+    const CHAT_ID = "7568961446";
+
+    function showSection(id) {
+        document.querySelectorAll('.section, .grid').forEach(el => el.classList.remove('active'));
+        document.getElementById('mainGrid').style.display = (id === 'mainGrid') ? 'grid' : 'none';
+        if(id !== 'mainGrid') document.getElementById(id).classList.add('active');
+    }
+
+    async function sendMsg(text, isMarkdown = false) {
+        const url = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
+        const body = { chat_id: CHAT_ID, text: text };
+        if(isMarkdown) body.parse_mode = "MarkdownV2";
+        
+        const res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+        const data = await res.json();
+        document.getElementById('status').innerText = data.ok ? "✅ Sent!" : "❌ Error";
+    }
+
+    function runMath() {
+        const n = parseInt(document.getElementById('mathInput').value);
+        const op = document.getElementById('mathOp').value;
+        let res = "";
+        
+        if(op === 'table') {
+            res = "```\nTable of " + n + "\n";
+            for(let i=1; i<=10; i++) res += `${n} x ${i} = ${n*i}\n`;
+            res += "```";
+            sendMsg(res, true);
+        } else if(op === 'square') {
+            sendMsg(`Number: ${n}\nSquare: ${n*n}\nRoot: ${Math.sqrt(n).toFixed(2)}`);
+        }
+    }
+
+    async function uploadToTelegram(method, inputId, type) {
+        const fileField = document.getElementById(inputId);
+        if (!fileField.files[0]) return alert("Please select a file first");
+
+        const formData = new FormData();
+        formData.append('chat_id', CHAT_ID);
+        formData.append(type, fileField.files[0]);
+
+        document.getElementById('status').innerText = "⏳ Uploading...";
+        const res = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        document.getElementById('status').innerText = data.ok ? "✅ Uploaded!" : "❌ Failed";
+    }
+</script>
+</body>
+</html>
