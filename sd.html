@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Bot Dashboard</title>
+    <style>
+        :root { --tg-blue: #0088cc; --tg-green: #28a745; --tg-red: #dc3545; --bg: #f0f2f5; --card-bg: #ffffff; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 700px; margin: auto; }
+        
+        /* Header & Status */
+        .header { text-align: center; margin-bottom: 20px; }
+        h1 { color: var(--tg-blue); margin-bottom: 5px; }
+        #status { display: inline-block; padding: 5px 15px; border-radius: 15px; background: #e2e3e5; font-size: 14px; font-weight: bold; }
+
+        /* Grid Navigation */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .grid-item { 
+            background: var(--card-bg); padding: 20px 10px; border-radius: 12px; text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); cursor: pointer; transition: 0.2s; font-weight: bold;
+        }
+        .grid-item:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); color: var(--tg-blue); }
+        .grid-item i { font-size: 28px; display: block; margin-bottom: 10px; }
+
+        /* Sections */
+        .section { background: var(--card-bg); padding: 25px; border-radius: 15px; display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .section.active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        h2 { margin-top: 0; color: var(--tg-blue); border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        label { display: block; margin: 15px 0 5px; font-weight: 600; color: #555; }
+        select, input, textarea { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
+        
+        button { 
+            width: 100%; padding: 12px; margin-top: 20px; border: none; border-radius: 8px; font-size: 16px;
+            background: var(--tg-blue); color: white; font-weight: bold; cursor: pointer; transition: 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        .btn-green { background: var(--tg-green); }
+        .btn-red { background: var(--tg-red); }
+        .back-btn { background: #6c757d; margin-top: 10px; }
+
+        /* Timer UI */
+        .timer-display { font-size: 48px; font-weight: bold; text-align: center; margin: 20px 0; color: var(--tg-blue); }
+        
+        /* Chat UI */
+        .chat-box { height: 300px; border: 1px solid #ddd; border-radius: 8px; overflow-y: auto; padding: 15px; background: #fafafa; margin-bottom: 10px; }
+        .msg { margin-bottom: 10px; padding: 10px 14px; border-radius: 15px; max-width: 80%; word-wrap: break-word; }
+        .msg.bot { background: var(--tg-blue); color: white; float: right; clear: both; border-bottom-right-radius: 2px; }
+        .msg.user { background: #e9ecef; color: #333; float: left; clear: both; border-bottom-left-radius: 2px; }
+        .chat-input-row { display: flex; gap: 10px; }
+        .chat-input-row input { flex: 1; margin: 0; }
+        .chat-input-row button { width: auto; margin: 0; padding: 0 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>🎓 Study Hub Bot</h1>
+        <div id="status">🔴 Disconnected</div>
+    </div>
+
+    <div id="mainGrid" class="grid">
+        <div class="grid-item" onclick="showSection('academicSection')"><i>📚</i> Academics</div>
+        <div class="grid-item" onclick="showSection('uploadSection')"><i>📤</i> Uploads</div>
+        <div class="grid-item" onclick="showSection('timerSection')"><i>⏱️</i> Study Timer</div>
+        <div class="grid-item" onclick="showSection('funSection')"><i>🎮</i> Quizzes</div>
+        <div class="grid-item" onclick="showSection('chatSection')"><i>💬</i> Live Chat</div>
+    </div>
+
+    <div id="academicSection" class="section">
+        <h2>📚 Academic Vault</h2>
+        <label>Select Class</label>
+        <select id="classSelect">
+            <option value="class8">Class 8</option>
+            <option value="class9">Class 9</option>
+            <option value="class10" selected>Class 10</option>
+        </select>
+        
+        <label>Select Subject</label>
+        <select id="subjectSelect">
+            <option value="math">Mathematics (Formulas)</option>
+            <option value="science">Science (Concepts)</option>
+            <option value="sst">Social Science (Timelines)</option>
+        </select>
+
+        <button onclick="sendAcademicData()">Send Cheat Sheet to Telegram</button>
+        <button class="back-btn" onclick="showSection('mainGrid')">Back to Menu</button>
+    </div>
+
+    <div id="uploadSection" class="section">
+        <h2>📤 Homework & Media</h2>
+        <label>Upload Document (PDF, DOCX)</label>
+        <input type="file" id="docInput">
+        <button class="btn-green" onclick="uploadMedia('sendDocument', 'docInput', 'document')">Send Document</button>
+        
+        <label style="margin-top: 25px;">Upload Photo of Notes (JPG, PNG)</label>
+        <input type="file" id="imgInput" accept="image/*">
+        <button class="btn-green" onclick="uploadMedia('sendPhoto', 'imgInput', 'photo')">Send Photo</button>
+        
+        <button class="back-btn" onclick="showSection('mainGrid')">Back to Menu</button>
+    </div>
+
+    <div id="timerSection" class="section">
+        <h2>⏱️ Pomodoro Timer</h2>
+        <p style="text-align: center; color: #666;">Focus for 25 minutes. Bot will alert you when done!</p>
+        <div class="timer-display" id="timeDisplay">25:00</div>
+        <button id="startTimerBtn" class="btn-green" onclick="startTimer()">Start Focus Session</button>
+        <button id="stopTimerBtn" class="btn-red" style="display:none;" onclick="stopTimer()">Stop / Reset</button>
+        <button class="back-btn" onclick="showSection('mainGrid')">Back to Menu</button>
+    </div>
+
+    <div id="funSection" class="section">
+        <h2>🎮 Brain Teasers & Motivation</h2>
+        <button onclick="sendRandomQuiz()">Send Random Quiz MCQ</button>
+        <button class="btn-green" onclick="sendMotivation()">Send Daily Motivation</button>
+        <button class="back-btn" onclick="showSection('mainGrid')">Back to Menu</button>
+    </div>
+
+    <div id="chatSection" class="section">
+        <h2>💬 Live Bot Inbox</h2>
+        <div class="chat-box" id="chatBox">
+            </div>
+        <div class="chat-input-row">
+            <input type="text" id="chatInput" placeholder="Type a message to bot..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
+            <button onclick="sendChatMessage()">Send</button>
+        </div>
+        <button class="back-btn" onclick="showSection('mainGrid')">Back to Menu</button>
+    </div>
+
+</div>
+
+<script>
+    // --- BOT CONFIGURATION ---
+    const TOKEN = "8539545999:AAGPUpBrVsZGwMPpBXx5tghaHoTJEH9hrbo";
+    const CHAT_ID = "7568961446";
+    let lastUpdateId = 0; // Keeps track of read messages
+
+    // --- KNOWLEDGE DATABASES ---
+    const STUDY_DB = {
+        class10: {
+            math: "<b>Class 10 Math Formulas</b>\n\n• <b>Quadratic:</b> x = [-b ± √(b² - 4ac)] / 2a\n• <b>Trig:</b> sin²θ + cos²θ = 1\n• <b>AP nth term:</b> a_n = a + (n-1)d",
+            science: "<b>Class 10 Science Concepts</b>\n\n• <b>Ohm's Law:</b> V = I × R\n• <b>Mirror Formula:</b> 1/f = 1/v + 1/u\n• <b>pH Scale:</b> Acid < 7, Neutral = 7, Base > 7",
+            sst: "<b>Class 10 History Timelines</b>\n\n• <b>1915:</b> Gandhi returns to India\n• <b>1919:</b> Rowlatt Act & Jallianwala Bagh\n• <b>1930:</b> Civil Disobedience Movement"
+        },
+        class9: {
+            math: "<b>Class 9 Math Formulas</b>\n\n• <b>Area of Triangle (Heron):</b> √(s(s-a)(s-b)(s-c))\n• <b>Volume of Sphere:</b> (4/3)πr³\n• <b>(a+b)²:</b> a² + 2ab + b²",
+            science: "<b>Class 9 Science Concepts</b>\n\n• <b>Newton's 2nd Law:</b> F = m × a\n• <b>Kinetic Energy:</b> ½mv²\n• <b>Cell Theory:</b> Cell is the fundamental unit of life.",
+            sst: "<b>Class 9 Geography Facts</b>\n\n• India's total area accounts for about 2.4% of the total geographical area of the world.\n• Standard Meridian of India is 82°30'E."
+        },
+        class8: {
+            math: "<b>Class 8 Math Formulas</b>\n\n• <b>Euler's Formula for Polyhedrons:</b> F + V - E = 2\n• <b>Area of Trapezium:</b> ½ × (sum of parallel sides) × height\n• <b>Compound Interest:</b> A = P(1 + R/100)^n",
+            science: "<b>Class 8 Science Concepts</b>\n\n• <b>Force:</b> A push or pull on an object.\n• <b>Friction:</b> Force that opposes relative motion.\n• <b>Metals:</b> Sonorous, malleable, ductile, good conductors.",
+            sst: "<b>Class 8 Civics Facts</b>\n\n• The Indian Constitution was adopted on Nov 26, 1949.\n• Fundamental Rights protect citizens against arbitrary exercise of power."
+        }
+    };
+
+    const QUIZ_DB = [
+        "<b>Quiz Time!</b>\nWhat is the powerhouse of the cell?\nA) Nucleus\nB) Ribosome\nC) Mitochondria",
+        "<b>Quiz Time!</b>\nWhat is the value of π (Pi) to two decimal places?\nA) 3.12\nB) 3.14\nC) 3.16",
+        "<b>Quiz Time!</b>\nWho was the first President of independent India?\nA) Jawaharlal Nehru\nB) B. R. Ambedkar\nC) Dr. Rajendra Prasad"
+    ];
+
+    // --- UI NAVIGATION ---
+    function showSection(id) {
+        document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+        document.getElementById('mainGrid').style.display = (id === 'mainGrid') ? 'grid' : 'none';
+        if(id !== 'mainGrid') document.getElementById(id).classList.add('active');
+    }
+
+    function setStatus(text, color) {
+        const el = document.getElementById('status');
+        el.innerText = text;
+        el.style.background = color;
+        el.style.color = "white";
+        setTimeout(() => { el.style.background = "#e2e3e5"; el.style.color = "#333"; el.innerText = "🟢 Online"; }, 3000);
+    }
+
+    // --- CORE API SENDER ---
+    async function apiCall(method, payload) {
+        try {
+            const response = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            if(data.ok) {
+                setStatus("✅ Sent successfully!", "var(--tg-green)");
+                return data;
+            } else {
+                setStatus("❌ Error: " + data.description, "var(--tg-red)");
+            }
+        } catch (error) {
+            setStatus("❌ Network Error", "var(--tg-red)");
+        }
+    }
+
+    // --- FEATURE FUNCTIONS ---
+    function sendAcademicData() {
+        const cls = document.getElementById('classSelect').value;
+        const sub = document.getElementById('subjectSelect').value;
+        const text = STUDY_DB[cls][sub];
+        apiCall('sendMessage', { chat_id: CHAT_ID, text: text, parse_mode: 'HTML' });
+    }
+
+    function sendRandomQuiz() {
+        const randomQuiz = QUIZ_DB[Math.floor(Math.random() * QUIZ_DB.length)];
+        apiCall('sendMessage', { chat_id: CHAT_ID, text: randomQuiz, parse_mode: 'HTML' });
+    }
+
+    function sendMotivation() {
+        const quotes = [
+            "“The secret of getting ahead is getting started.” – Mark Twain",
+            "“It always seems impossible until it's done.” – Nelson Mandela",
+            "“Don't watch the clock; do what it does. Keep going.” – Sam Levenson"
+        ];
+        const quote = quotes[Math.floor(Math.random() * quotes.length)];
+        apiCall('sendMessage', { chat_id: CHAT_ID, text: "🔥 <b>Daily Motivation</b>\n\n" + quote, parse_mode: 'HTML' });
+    }
+
+    // --- FILE UPLOADER ---
+    async function uploadMedia(method, inputId, type) {
+        const fileField = document.getElementById(inputId);
+        if (!fileField.files[0]) return alert("Please select a file first");
+
+        const formData = new FormData();
+        formData.append('chat_id', CHAT_ID);
+        formData.append(type, fileField.files[0]);
+
+        setStatus("⏳ Uploading...", "#ffc107");
+        try {
+            const response = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, { method: 'POST', body: formData });
+            const data = await response.json();
+            if(data.ok) setStatus("✅ Uploaded!", "var(--tg-green)");
+            else setStatus("❌ Failed", "var(--tg-red)");
+        } catch(e) {
+            setStatus("❌ Network Error", "var(--tg-red)");
+        }
+    }
+
+    // --- POMODORO TIMER ---
+    let timerInterval;
+    let timeLeft = 25 * 60; // 25 mins
+
+    function updateTimerDisplay() {
+        const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+        const s = (timeLeft % 60).toString().padStart(2, '0');
+        document.getElementById('timeDisplay').innerText = `${m}:${s}`;
+    }
+
+    function startTimer() {
+        apiCall('sendMessage', { chat_id: CHAT_ID, text: "🍅 *Focus Session Started!* Put your phone away for 25 minutes.", parse_mode: "Markdown" });
+        document.getElementById('startTimerBtn').style.display = 'none';
+        document.getElementById('stopTimerBtn').style.display = 'block';
+        
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            updateTimerDisplay();
+            if (timeLeft <= 0) {
+                stopTimer();
+                apiCall('sendMessage', { chat_id: CHAT_ID, text: "🎉 *Focus Session Complete!* Great job, take a 5-minute break.", parse_mode: "Markdown" });
+                alert("Session Complete!");
+            }
+        }, 1000);
+    }
+
+    function stopTimer() {
+        clearInterval(timerInterval);
+        timeLeft = 25 * 60;
+        updateTimerDisplay();
+        document.getElementById('startTimerBtn').style.display = 'block';
+        document.getElementById('stopTimerBtn').style.display = 'none';
+    }
+
+    // --- LIVE CHAT & AUTO-RESPONDER ---
+    function appendMessage(text, sender) {
+        const box = document.getElementById('chatBox');
+        const div = document.createElement('div');
+        div.className = `msg ${sender}`;
+        div.innerText = text;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function sendChatMessage() {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim();
+        if(!text) return;
+        
+        appendMessage(text, 'bot'); // You are sending AS the bot
+        apiCall('sendMessage', { chat_id: CHAT_ID, text: text });
+        input.value = '';
+    }
+
+    async function pollUpdates() {
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=5`);
+            const data = await res.json();
+            
+            if (data.ok && data.result.length > 0) {
+                data.result.forEach(update => {
+                    lastUpdateId = update.update_id;
+                    
+                    if(update.message && update.message.text) {
+                        const userText = update.message.text;
+                        appendMessage(userText, 'user');
+
+                        // Simple Auto-Responder Engine
+                        const lowerText = userText.toLowerCase();
+                        if (lowerText.includes('formula')) {
+                            apiCall('sendMessage', { chat_id: CHAT_ID, text: "Did someone say Formula? Check the Academics section on the web dashboard!" });
+                        } else if (lowerText.includes('quiz')) {
+                            sendRandomQuiz();
+                        } else if (lowerText === '/start') {
+                            apiCall('sendMessage', { chat_id: CHAT_ID, text: "Welcome to the Study Hub! I am synced with your Web Dashboard." });
+                        }
+                    }
+                });
+            }
+        } catch(e) { console.log("Polling error (normal if offline)"); }
+    }
+
+    // Initialize Status and start polling
+    document.getElementById('status').innerText = "🟢 Online";
+    document.getElementById('status').style.color = "#333";
+    setInterval(pollUpdates, 3000); // Poll every 3 seconds
+
+</script>
+</body>
+  </html>
+  
