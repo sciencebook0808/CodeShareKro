@@ -1,39 +1,149 @@
 /**
- * Vercel Serverless Function: Telegram AI Study Agent
- * Tech Stack: Node.js (Vercel), Telegram Bot API, Google Gemini AI
+ * Vercel Serverless Function: Ultimate AI Study Agent
+ * Features: Auto-Recovery, HTML-Safe Rendering, Persistent Menus, Detailed Error Logs
  */
 
 export default async function handler(req, res) {
-    // HARDCODED CONFIGURATION (As requested)
     const CONFIG = {
-        TELEGRAM_TOKEN: "8539545999:AAGPUpBrVsZGwMPpBXx5tghaHoTJEH9hrbo",
-        GEMINI_API_KEY: "AIzaSyAghW7M5jQhPqW8hj-cFO1qic0qXHTsRzs", // Replace this with your Gemini Key
-        STUDENT_ID: "7568961446"
+        TOKEN: "8539545999:AAGPUpBrVsZGwMPpBXx5tghaHoTJEH9hrbo",
+        GEMINI_KEY: "PASTE_YOUR_GEMINI_API_KEY_HERE", 
+        ADMIN_ID: "7568961446"
     };
 
-    const host = req.headers.host;
-
-    // --- 1. WEBHOOK ACTIVATION (GET REQUEST) ---
-    // Simply visit https://your-project.vercel.app/api/bot to activate
+    // 1. WEBHOOK REGISTRATION (GET)
     if (req.method === 'GET') {
-        try {
-            const webhookUrl = `https://${host}/api/bot`;
-            const setup = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_TOKEN}/setWebhook?url=${webhookUrl}`);
-            const result = await setup.json();
-            return res.status(200).send(`<h1>Bot Webhook Status</h1><pre>${JSON.stringify(result, null, 2)}</pre>`);
-        } catch (e) {
-            return res.status(500).send("Webhook Setup Failed: " + e.message);
-        }
+        const host = req.headers.host;
+        const url = `https://api.telegram.org/bot${CONFIG.TOKEN}/setWebhook?url=https://${host}/api/bot`;
+        const response = await fetch(url);
+        const data = await response.json();
+        return res.status(200).send(`<h1>Bot Online</h1><pre>${JSON.stringify(data, null, 2)}</pre>`);
     }
 
-    // --- 2. THE MAIN ENGINE (POST REQUEST) ---
+    // 2. MESSAGE HANDLING (POST)
     if (req.method === 'POST') {
-        // Always reply to Telegram immediately to prevent timeout loops
-        res.status(200).json({ ok: true });
-
+        res.status(200).send('OK'); // Critical: Stops Telegram from retrying
         const update = req.body;
         if (!update) return;
 
+        const chatId = update.message ? update.message.chat.id : (update.callback_query ? update.callback_query.message.chat.id : null);
+        const userText = update.message ? update.message.text : (update.callback_query ? update.callback_query.data : null);
+
+        if (!chatId || !userText) return;
+
+        try {
+            await sendAction(CONFIG.TOKEN, chatId, 'typing');
+
+            // --- COMMAND ROUTING ---
+            if (userText === '/start') {
+                return await sendAdvancedUI(CONFIG.TOKEN, chatId, 
+                    "<b>🌟 Welcome to the AI Study Hub!</b>\n\nI am your background agent for Class 8-10. I can explain complex science, solve math, or create custom quizzes.\n\n<i>What are we learning today?</i>",
+                    ["Class 10 Math 📐", "Physics Lab 🧪", "History Dates ⏳", "Quick Quiz 🧠"]
+                );
+            }
+
+            // --- AGENTIC AI CORE ---
+            const aiResult = await fetchAgenticAI(CONFIG.GEMINI_KEY, userText);
+
+            // --- DELIVERY ---
+            await sendAdvancedUI(CONFIG.TOKEN, chatId, aiResult.text, aiResult.options);
+
+        } catch (error) {
+            // ERROR REPORTING: The bot will now tell you exactly what failed.
+            const errorTrace = `<b>⚠️ System Alert</b>\n\n<b>Error:</b> <code>${error.message}</code>\n<b>Trace:</b> <i>The bot failed to process the AI response. Check API Key or JSON format.</i>`;
+            await sendAdvancedUI(CONFIG.TOKEN, chatId, errorTrace, ["Try Again 🔄", "Main Menu 🏠"]);
+        }
+    }
+}
+
+// --- INTELLIGENT AGENTIC LOGIC ---
+async function fetchAgenticAI(apiKey, userPrompt) {
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+    const systemContext = `
+    You are a Class 8-10 Expert Tutor. User asked: "${userPrompt}".
+    Return ONLY a JSON object:
+    {
+      "text": "Your answer in HTML format (use <b>, <i>, <code>). Max 4000 chars.",
+      "options": ["Option 1", "Option 2", "Option 3"]
+    }
+    Rules: 
+    - If user says 'Quick Quiz', generate an MCQ.
+    - If user says 'Math', show step-by-step in <code> blocks.
+    - Suggest high-value follow-up buttons.
+    `;
+
+    const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: systemContext }] }] })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Gemini API Error: ${errorData.error.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    let aiText = data.candidates[0].content.parts[0].text;
+
+    // SANITIZER: Handles AI wrapping JSON in markdown blocks
+    const cleanJson = aiText.replace(/```json|```/g, "").trim();
+    
+    try {
+        return JSON.parse(cleanJson);
+    } catch (e) {
+        // Fallback if AI refuses to return JSON
+        return { 
+            text: `<b>Note:</b> I've simplified my response formatting:\n\n${aiText}`, 
+            options: ["Back to Menu"] 
+        };
+    }
+}
+
+// --- ADVANCED TELEGRAM RENDERER ---
+async function sendAdvancedUI(token, chatId, text, options) {
+    const inlineKeyboard = [];
+    // Build 2-column dynamic buttons
+    for (let i = 0; i < options.length; i += 2) {
+        const row = [{ text: options[i], callback_data: options[i] }];
+        if (options[i + 1]) row.push({ text: options[i + 1], callback_data: options[i + 1] });
+        inlineKeyboard.push(row);
+    }
+
+    const payload = {
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'HTML', // Switched from MarkdownV2 to HTML for 100% stability
+        reply_markup: {
+            inline_keyboard: inlineKeyboard,
+            // Persistent Reply Menu at the bottom
+            keyboard: [
+                [{ text: "Class 10 Math 📐" }, { text: "Physics Lab 🧪" }],
+                [{ text: "Quick Quiz 🧠" }, { text: "/start" }]
+            ],
+            resize_keyboard: true
+        }
+    };
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+        const errorDetail = await res.json();
+        throw new Error(`Telegram API Error: ${errorDetail.description}`);
+    }
+}
+
+async function sendAction(token, chatId, action) {
+    await fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, action: action })
+    });
+}
         let chatId, userMessage, isCallback = false;
 
         // Parse Message or Button Click
