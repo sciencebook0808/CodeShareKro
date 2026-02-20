@@ -6,7 +6,7 @@
 export default async function handler(req, res) {
     const CONFIG = {
         TOKEN: "8539545999:AAGPUpBrVsZGwMPpBXx5tghaHoTJEH9hrbo",
-        GEMINI_KEY: "PASTE_YOUR_GEMINI_API_KEY_HERE", 
+        GEMINI_KEY: "AIzaSyA_GgAydJn0nsEUNxi5vI1PwkpxP5RphFE", 
         ADMIN_ID: "7568961446"
     };
 
@@ -57,7 +57,7 @@ export default async function handler(req, res) {
 
 // --- INTELLIGENT AGENTIC LOGIC ---
 async function fetchAgenticAI(apiKey, userPrompt) {
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
     const systemContext = `
     You are a Class 8-10 Expert Tutor. User asked: "${userPrompt}".
