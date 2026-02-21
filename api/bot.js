@@ -1,271 +1,136 @@
 /**
- * Vercel Serverless Function: Ultimate AI Study Agent
- * STATUS: Fixed Syntax & Uninterrupted Logic
+ * Vercel Serverless Function: AI Study Agent (Unified & Optimized)
  */
 
 export default async function handler(req, res) {
-    // --- 1. CONFIGURATION ---
     const CONFIG = {
-        TOKEN: "8539545999:AAGPUpBrVsZGwMPpBXx5tghaHoTJEH9hrbo",
-        GEMINI_KEY: process.env.api_key, // Your provided key
-        MODEL: "gemini-2.5-flash" // Use a stable model name
+        TELEGRAM_TOKEN: process.env.TELEGRAM_TOKEN, // Use Environment Variables!
+        GEMINI_KEY: process.env.GEMINI_API_KEY,
+        MODEL: "gemini-2.5-flash" // Stable model name
     };
 
-    const host = req.headers.host;
-
-    // --- 2. WEBHOOK SETUP (GET) ---
+    // 1. SETUP WEBHOOK (GET REQUEST)
     if (req.method === 'GET') {
         try {
-            const url = `https://api.telegram.org/bot${CONFIG.TOKEN}/setWebhook?url=https://${host}/api/bot`;
+            const host = req.headers.host;
+            const url = `https://api.telegram.org/bot${CONFIG.TELEGRAM_TOKEN}/setWebhook?url=https://${host}/api/bot`;
             const response = await fetch(url);
             const data = await response.json();
-            return res.status(200).send(`<h1>Bot Status</h1><pre>${JSON.stringify(data, null, 2)}</pre>`);
+            return res.status(200).json({ status: "Webhook Set", detail: data });
         } catch (e) {
             return res.status(500).send("Setup Failed: " + e.message);
         }
     }
 
-    // --- 3. MESSAGE HANDLING (POST) ---
+    // 2. HANDLE MESSAGES (POST REQUEST)
     if (req.method === 'POST') {
-        // Acknowledge immediately to avoid Vercel timeouts and Telegram retries
-        res.status(200).send('OK');
-
         const update = req.body;
-        if (!update) return;
+        if (!update) return res.status(200).send('No Body');
 
-        // Extract Chat ID and Text safely
         const chatId = update.message?.chat.id || update.callback_query?.message.chat.id;
         const userText = update.message?.text || update.callback_query?.data;
 
-        if (!chatId || !userText) return;
+        if (!chatId || !userText) return res.status(200).send('Ignored');
 
         try {
-            // Send typing indicator
-            await sendTelegramAction(CONFIG.TOKEN, chatId, 'typing');
+            // Signal "Typing..." to user
+            await sendChatAction(CONFIG.TELEGRAM_TOKEN, chatId, 'typing');
 
-            // Handle Start Command
+            // Route Commands
             if (userText === '/start') {
-                return await sendModernUI(CONFIG.TOKEN, chatId, 
-                    "<b>🌟 Welcome to the AI Study Hub!</b>\n\nI am your background agent. I can explain complex science, solve math, or create custom quizzes.\n\n<i>What are we learning today?</i>",
-                    ["Class 10 Math 📐", "Physics Lab 🧪", "History Dates ⏳", "Quick Quiz 🧠"]
+                await sendTelegramUI(CONFIG.TELEGRAM_TOKEN, chatId, 
+                    "🧬 <b>Welcome to the AI Study Hub!</b>\n\nI am your tutor for Class 8-10. I can explain science, solve math, or create quizzes.\n\n<i>What are we learning today?</i>",
+                    ["Class 10 Math 📐", "Physics Lab 🧪", "Quick Quiz 🧠"]
                 );
+            } else {
+                // Fetch AI Response
+                const aiResponse = await callGeminiAgent(CONFIG.GEMINI_KEY, CONFIG.MODEL, userText);
+                await sendTelegramUI(CONFIG.TELEGRAM_TOKEN, chatId, aiResponse.text, aiResponse.options);
             }
 
-            // Get AI Response
-            const aiResult = await fetchAgenticAI(CONFIG.GEMINI_KEY, CONFIG.MODEL, userText);
-
-            // Send Response
-            await sendModernUI(CONFIG.TOKEN, chatId, aiResult.text, aiResult.options);
-
+            return res.status(200).send('OK');
         } catch (error) {
-            console.error("Agent Error:", error);
-            const errorMsg = `<b>⚠️ System Alert</b>\n\n<b>Error:</b> <code>${error.message}</code>\n\n<i>Please try rephrasing your request.</i>`;
-            await sendModernUI(CONFIG.TOKEN, chatId, errorMsg, ["Retry 🔄", "Main Menu 🏠"]);
+            console.error("Critical Error:", error);
+            await sendTelegramUI(CONFIG.TELEGRAM_TOKEN, chatId, 
+                `⚠️ <b>System Error</b>\n<code>${error.message}</code>`, 
+                ["Retry 🔄", "Main Menu 🏠"]
+            );
+            return res.status(200).send('Error Handled');
         }
     }
 }
 
-// --- AI CORE ---
-async function fetchAgenticAI(apiKey, model, userPrompt) {
+// --- CORE AI LOGIC ---
+async function callGeminiAgent(apiKey, model, prompt) {
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-    const systemContext = `
-    Role: Class 8-10 Expert Tutor. User asked: "${userPrompt}".
-    Return ONLY a JSON object:
-    {
-      "text": "Your answer in HTML format (use <b>, <i>, <code>). Max 4000 chars.",
-      "options": ["Option 1", "Option 2", "Option 3"]
-    }
-    Rules: 
-    - If user says 'Quick Quiz', generate an MCQ.
-    - If user says 'Math', show step-by-step in <code> blocks.
-    - Always suggest 3 relevant follow-up buttons.
+    
+    const systemInstruction = `
+        Role: Class 8-10 Expert Tutor. 
+        User Query: "${prompt}"
+        Rules:
+        1. Answer clearly using HTML (<b>, <i>, <code>).
+        2. If it's a math problem, provide step-by-step logic in <code> blocks.
+        3. ALWAYS return valid JSON in this format:
+        {"text": "your response", "options": ["Option 1", "Option 2", "Option 3"]}
     `;
 
     const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: systemContext }] }] })
+        body: JSON.stringify({ contents: [{ parts: [{ text: systemInstruction }] }] })
     });
 
     const data = await response.json();
-    
-    if (!response.ok) {
-        throw new Error(data.error?.message || "Gemini API Connection Failed");
-    }
+    if (!response.ok) throw new Error(data.error?.message || "Gemini API Error");
 
-    let aiText = data.candidates[0].content.parts[0].text;
-    const cleanJson = aiText.replace(/```json|```/g, "").trim();
+    const rawOutput = data.candidates[0].content.parts[0].text;
+    
+    // Clean potential markdown code blocks from AI response
+    const jsonStr = rawOutput.replace(/```json|```/g, "").trim();
     
     try {
-        return JSON.parse(cleanJson);
+        return JSON.parse(jsonStr);
     } catch (e) {
         return { 
-            text: `<b>Analysis:</b>\n\n${aiText}`, 
+            text: `<b>Response:</b>\n\n${rawOutput}`, 
             options: ["Next Topic", "Main Menu"] 
         };
     }
 }
 
-// --- TELEGRAM UI UTILS ---
-async function sendModernUI(token, chatId, text, options) {
+// --- TELEGRAM RENDERER ---
+async function sendTelegramUI(token, chatId, text, buttons) {
     const inlineKeyboard = [];
-    for (let i = 0; i < options.length; i += 2) {
-        const row = [{ text: options[i], callback_data: options[i] }];
-        if (options[i + 1]) row.push({ text: options[i + 1], callback_data: options[i + 1] });
+    for (let i = 0; i < buttons.length; i += 2) {
+        const row = [{ text: buttons[i], callback_data: buttons[i] }];
+        if (buttons[i + 1]) row.push({ text: buttons[i + 1], callback_data: buttons[i + 1] });
         inlineKeyboard.push(row);
     }
-
-    const payload = {
-        chat_id: chatId,
-        text: text,
-        parse_mode: 'HTML',
-        reply_markup: {
-            inline_keyboard: inlineKeyboard,
-            keyboard: [
-                [{ text: "Class 10 Math 📐" }, { text: "Physics Lab 🧪" }],
-                [{ text: "Quick Quiz 🧠" }, { text: "/start" }]
-            ],
-            resize_keyboard: true
-        }
-    };
 
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-}
-
-async function sendTelegramAction(token, chatId, action) {
-    await fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, action: action })
-    });
-}
-            if (userText === '/start') {
-                return await sendAdvancedUI(CONFIG.TOKEN, chatId, 
-                    "<b>🌟 Welcome to the AI Study Hub!</b>\n\nI am your background agent for Class 8-10. I can explain complex science, solve math, or create custom quizzes.\n\n<i>What are we learning today?</i>",
-                    ["Class 10 Math 📐", "Physics Lab 🧪", "History Dates ⏳", "Quick Quiz 🧠"]
-                );
+        body: JSON.stringify({
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: inlineKeyboard,
+                keyboard: [[{ text: "Quick Quiz 🧠" }, { text: "/start" }]],
+                resize_keyboard: true
             }
-
-            // --- AGENTIC AI CORE ---
-            const aiResult = await fetchAgenticAI(CONFIG.GEMINI_KEY, userText);
-
-            // --- DELIVERY ---
-            await sendAdvancedUI(CONFIG.TOKEN, chatId, aiResult.text, aiResult.options);
-
-        } catch (error) {
-            // ERROR REPORTING: The bot will now tell you exactly what failed.
-            const errorTrace = `<b>⚠️ System Alert</b>\n\n<b>Error:</b> <code>${error.message}</code>\n<b>Trace:</b> <i>The bot failed to process the AI response. Check API Key or JSON format.</i>`;
-            await sendAdvancedUI(CONFIG.TOKEN, chatId, errorTrace, ["Try Again 🔄", "Main Menu 🏠"]);
-        }
-    }
-}
-
-// --- INTELLIGENT AGENTIC LOGIC ---
-async function fetchAgenticAI(apiKey, userPrompt) {
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
-    const systemContext = `
-    You are a Class 8-10 Expert Tutor. User asked: "${userPrompt}".
-    Return ONLY a JSON object:
-    {
-      "text": "Your answer in HTML format (use <b>, <i>, <code>). Max 4000 chars.",
-      "options": ["Option 1", "Option 2", "Option 3"]
-    }
-    Rules: 
-    - If user says 'Quick Quiz', generate an MCQ.
-    - If user says 'Math', show step-by-step in <code> blocks.
-    - Suggest high-value follow-up buttons.
-    `;
-
-    const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: systemContext }] }] })
+        })
     });
-
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Gemini API Error: ${errorData.error.message || response.statusText}`);
-    }
-
-    const data = await response.json();
-    let aiText = data.candidates[0].content.parts[0].text;
-
-    // SANITIZER: Handles AI wrapping JSON in markdown blocks
-    const cleanJson = aiText.replace(/```json|```/g, "").trim();
-    
-    try {
-        return JSON.parse(cleanJson);
-    } catch (e) {
-        // Fallback if AI refuses to return JSON
-        return { 
-            text: `<b>Note:</b> I've simplified my response formatting:\n\n${aiText}`, 
-            options: ["Back to Menu"] 
-        };
-    }
 }
 
-// --- ADVANCED TELEGRAM RENDERER ---
-async function sendAdvancedUI(token, chatId, text, options) {
-    const inlineKeyboard = [];
-    // Build 2-column dynamic buttons
-    for (let i = 0; i < options.length; i += 2) {
-        const row = [{ text: options[i], callback_data: options[i] }];
-        if (options[i + 1]) row.push({ text: options[i + 1], callback_data: options[i + 1] });
-        inlineKeyboard.push(row);
-    }
-
-    const payload = {
-        chat_id: chatId,
-        text: text,
-        parse_mode: 'HTML', // Switched from MarkdownV2 to HTML for 100% stability
-        reply_markup: {
-            inline_keyboard: inlineKeyboard,
-            // Persistent Reply Menu at the bottom
-            keyboard: [
-                [{ text: "Class 10 Math 📐" }, { text: "Physics Lab 🧪" }],
-                [{ text: "Quick Quiz 🧠" }, { text: "/start" }]
-            ],
-            resize_keyboard: true
-        }
-    };
-
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-        const errorDetail = await res.json();
-        throw new Error(`Telegram API Error: ${errorDetail.description}`);
-    }
-}
-
-async function sendAction(token, chatId, action) {
+async function sendChatAction(token, chatId, action) {
     await fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: chatId, action: action })
     });
 }
-        let chatId, userMessage, isCallback = false;
-
-        // Parse Message or Button Click
-        if (update.message && update.message.text) {
-            chatId = update.message.chat.id;
-            userMessage = update.message.text;
-        } else if (update.callback_query) {
-            chatId = update.callback_query.message.chat.id;
-            userMessage = update.callback_query.data;
-            isCallback = true;
-        } else {
-            return; // Ignore non-text updates (stickers, etc)
+ext updates (stickers, etc)
         }
 
         try {
