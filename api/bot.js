@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     // --- 1. CONFIGURATION ---
     const CONFIG = {
         TOKEN: "8539545999:AAGPUpBrVsZGwMPpBXx5tghaHoTJEH9hrbo",
-        GEMINI_KEY: "AIzaSyA_GgAydJn0nsEUNxi5vI1PwkpxP5RphFE", // Your provided key
+        GEMINI_KEY: process.env.api_key, // Your provided key
         MODEL: "gemini-2.5-flash" // Use a stable model name
     };
 
