@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bytez AI Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        .prose pre { background-color: #1e1e1e !important; padding: 1rem; border-radius: 0.5rem; margin-top: 0.5rem; }
+        .prose code { color: #ebac70; }
+        .prose p { margin-bottom: 0.75rem; }
+        .message-appear { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 h-screen flex flex-col">
+
+    <header class="p-4 border-b border-slate-700 bg-slate-800 flex justify-between items-center">
+        <h1 class="text-xl font-bold text-blue-400">Bytez <span class="text-white font-light">Claude 4.6</span></h1>
+        <div class="text-xs text-slate-400">Status: <span id="status" class="text-green-500">Ready</span></div>
+    </header>
+
+    <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4 md:px-20 lg:px-64">
+        <div class="flex flex-col items-center justify-center h-full text-slate-500 italic" id="empty-state">
+            Start a conversation with Claude...
+        </div>
+    </main>
+
+    <footer class="p-4 bg-slate-800 border-t border-slate-700">
+        <form id="chat-form" class="max-w-4xl mx-auto flex gap-2">
+            <input 
+                type="text" 
+                id="user-input" 
+                placeholder="Ask me anything..." 
+                class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
+                required
+            >
+            <button 
+                type="submit" 
+                id="send-btn"
+                class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg font-medium transition-colors disabled:bg-slate-600"
+            >
+                Send
+            </button>
+        </form>
+    </footer>
+
+    <script type="module">
+        // We use esm.sh to import Bytez directly in the browser
+        import Bytez from "https://esm.sh/bytez.js"
+
+        const key = "88ee4847f7e78937af3bec85fcca883a"
+        const sdk = new Bytez(key)
+        const model = sdk.model("anthropic/claude-opus-4-6")
+
+        const form = document.getElementById('chat-form')
+        const input = document.getElementById('user-input')
+        const chatContainer = document.getElementById('chat-container')
+        const emptyState = document.getElementById('empty-state')
+        const sendBtn = document.getElementById('send-btn')
+        const statusText = document.getElementById('status')
+
+        // Keep track of history for context
+        let messageHistory = []
+
+        // Configure Marked for code highlighting
+        marked.setOptions({
+            highlight: function(code, lang) {
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true
+        });
+
+        async function addMessage(role, content) {
+            if (emptyState) emptyState.remove();
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message-appear flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            const innerDiv = document.createElement('div');
+            innerDiv.className = `max-w-[85%] p-4 rounded-2xl ${
+                role === 'user' 
+                ? 'bg-blue-600 text-white rounded-tr-none' 
+                : 'bg-slate-700 text-slate-100 rounded-tl-none prose prose-invert'
+            }`;
+
+            // Render Markdown if it's from AI
+            if (role === 'assistant') {
+                innerDiv.innerHTML = marked.parse(content);
+                // Trigger highlight.js for any new code blocks
+                innerDiv.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            } else {
+                innerDiv.textContent = content;
+            }
+
+            messageDiv.appendChild(innerDiv);
+            chatContainer.appendChild(messageDiv);
+            
+            // Auto scroll to bottom
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (!text) return;
+
+            // Update UI
+            input.value = '';
+            addMessage('user', text);
+            messageHistory.push({ role: "user", content: text });
+            
+            // Loading state
+            sendBtn.disabled = true;
+            statusText.innerText = "Thinking...";
+            statusText.className = "text-yellow-500";
+
+            try {
+                // Run the Bytez model
+                const { error, output } = await model.run(messageHistory);
+
+                if (error) {
+                    addMessage('assistant', `❌ Error: ${error.message || 'Unknown error occurred'}`);
+                } else {
+                    const aiResponse = output || "No response received.";
+                    addMessage('assistant', aiResponse);
+                    messageHistory.push({ role: "assistant", content: aiResponse });
+                }
+            } catch (err) {
+                addMessage('assistant', `❌ Connection Error: ${err.message}`);
+            } finally {
+                sendBtn.disabled = false;
+                statusText.innerText = "Ready";
+                statusText.className = "text-green-500";
+                input.focus();
+            }
+        });
+    </script>
+</body>
+  </html>
+  
