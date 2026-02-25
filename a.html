@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude 4.6 Chat - Bytez API</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        .prose pre { background-color: #0f172a !important; padding: 1rem; border-radius: 0.5rem; border: 1px solid #334155; }
+        .prose code { color: #38bdf8; font-family: 'Fira Code', monospace; }
+        .chat-scroll::-webkit-scrollbar { width: 6px; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200 h-screen flex flex-col font-sans">
+
+    <header class="p-4 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-10 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+            <h1 class="text-lg font-semibold tracking-tight">Claude <span class="text-blue-500">4.6</span></h1>
+        </div>
+        <span id="status" class="text-xs font-mono text-slate-500 uppercase tracking-widest">Idle</span>
+    </header>
+
+    <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-6 chat-scroll max-w-4xl mx-auto w-full">
+        <div class="text-center py-20 text-slate-600" id="welcome-msg">
+            <p class="text-xl font-light">How can I help you today?</p>
+        </div>
+    </main>
+
+    <footer class="p-4 bg-slate-950 border-t border-slate-800">
+        <form id="chat-form" class="max-w-4xl mx-auto relative">
+            <input 
+                type="text" 
+                id="user-input" 
+                placeholder="Type your message..." 
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-4 pr-24 py-4 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+                required
+            >
+            <button 
+                type="submit" 
+                id="send-btn"
+                class="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-500 text-white px-5 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                Send
+            </button>
+        </form>
+        <p class="text-[10px] text-center mt-2 text-slate-600 uppercase tracking-tighter">Powered by Bytez API • Claude Opus 4.6</p>
+    </footer>
+
+    <script>
+        const API_KEY = "88ee4847f7e78937af3bec85fcca883a";
+        const MODEL_URL = "https://api.bytez.com/models/v2/anthropic/claude-opus-4-6";
+        
+        const form = document.getElementById('chat-form');
+        const input = document.getElementById('user-input');
+        const chatContainer = document.getElementById('chat-container');
+        const statusLabel = document.getElementById('status');
+        const sendBtn = document.getElementById('send-btn');
+
+        // Initial history with System Prompt
+        let messages = [
+            { role: 'system', content: 'You are a helpful assistant that provides detailed answers in Markdown format.' }
+        ];
+
+        // Configure Markdown renderer
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true,
+            gfm: true
+        });
+
+        function createMessageUI(role, text) {
+            const isUser = role === 'user';
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`;
+            
+            const msgBox = document.createElement('div');
+            msgBox.className = `max-w-[90%] p-4 rounded-2xl shadow-sm ${
+                isUser 
+                ? 'bg-blue-700 text-white rounded-tr-none' 
+                : 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700 prose prose-invert prose-blue'
+            }`;
+
+            if (isUser) {
+                msgBox.textContent = text;
+            } else {
+                msgBox.innerHTML = marked.parse(text);
+                // Highlight code blocks after rendering
+                msgBox.querySelectorAll('pre code').forEach((el) => {
+                    hljs.highlightElement(el);
+                });
+            }
+
+            wrapper.appendChild(msgBox);
+            chatContainer.appendChild(wrapper);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            document.getElementById('welcome-msg')?.remove();
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const prompt = input.value.trim();
+            if (!prompt || sendBtn.disabled) return;
+
+            // UI Update
+            createMessageUI('user', prompt);
+            messages.push({ role: 'user', content: prompt });
+            input.value = '';
+            
+            // Loading State
+            sendBtn.disabled = true;
+            statusLabel.innerText = "Processing...";
+            statusLabel.classList.replace('text-slate-500', 'text-yellow-500');
+
+            try {
+                const response = await fetch(MODEL_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': API_KEY,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        messages: messages,
+                        stream: false, // Set to false to work with the .json() method
+                        params: { 
+                            max_length: 2048, 
+                            temperature: 0.7 
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                
+                // Handle Bytez output structure
+                // Note: Adjust 'data.output' if the API returns a different property name
+                const aiText = data.output || data.response || "No response received.";
+                
+                createMessageUI('assistant', aiText);
+                messages.push({ role: 'assistant', content: aiText });
+
+            } catch (error) {
+                console.error("API Error:", error);
+                createMessageUI('assistant', "⚠️ **Error:** Failed to connect to Bytez API. Please check your key or model availability.");
+            } finally {
+                sendBtn.disabled = false;
+                statusLabel.innerText = "Idle";
+                statusLabel.classList.replace('text-yellow-500', 'text-slate-500');
+                input.focus();
+            }
+        });
+    </script>
+</body>
+  </html>
+  
